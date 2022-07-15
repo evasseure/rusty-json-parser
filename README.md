@@ -1,5 +1,6 @@
 Grammar :
 
+```
 <json> ::= <object> | <array> | <number> | <string> | <boolean> | <null>
 
 <object> ::= '{' [ <member> *(', ' <member>) ] '}'
@@ -7,3 +8,4 @@ Grammar :
 <member> ::= <string> ': ' <json>
 
 <array> ::= '[' [ <json> *(', ' <json>) ] ']'
+```
