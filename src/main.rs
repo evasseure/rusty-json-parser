@@ -1,4 +1,7 @@
+use std::env;
 use std::fs;
+
+pub mod tokens;
 
 #[derive(Debug)]
 enum NodeType {
@@ -7,6 +10,7 @@ enum NodeType {
     Object(Object),
     Member(Member),
     Json(Json),
+    Array(Vec<NodeType>),
     Null,
 }
 
@@ -32,13 +36,6 @@ struct Object {
     members: Vec<NodeType>,
 }
 
-const STRING: &str = "STRING";
-const NUMBER: &str = "NUMBER";
-const L_BRACKET: &str = "{";
-const R_BRACKET: &str = "}";
-const COMMA: &str = ",";
-const COLON: &str = ":";
-
 struct Parser {
     code: String,
     index: usize,
@@ -46,7 +43,7 @@ struct Parser {
 }
 
 impl Parser {
-    fn get_next_token(&mut self) -> Option<Token> {
+    pub fn get_next_token(&mut self) -> Option<Token> {
         for current_char in self.code[self.index..self.code.len()].chars() {
             if current_char == ' ' || current_char == '\n' {
                 self.index += 1;
@@ -57,7 +54,7 @@ impl Parser {
             if current_char.is_digit(10) {
                 self.index += 1;
                 return Some(Token {
-                    token_type: String::from(NUMBER),
+                    token_type: String::from(tokens::NUMBER),
                     value: String::from(current_char),
                 });
             }
@@ -69,7 +66,7 @@ impl Parser {
                     if looped_char == '"' {
                         self.index += 1;
                         return Some(Token {
-                            token_type: String::from(STRING),
+                            token_type: String::from(tokens::STRING),
                             value: String::from(new_string),
                         });
                     } else if looped_char == '\n' {
@@ -81,36 +78,21 @@ impl Parser {
                 }
             }
 
-            if current_char == '{' {
-                self.index += 1;
-                return Some(Token {
-                    token_type: String::from(L_BRACKET),
-                    value: String::from(current_char),
-                });
-            }
-
-            if current_char == '}' {
-                self.index += 1;
-                return Some(Token {
-                    token_type: String::from(R_BRACKET),
-                    value: String::from(current_char),
-                });
-            }
-
-            if current_char == ':' {
-                self.index += 1;
-                return Some(Token {
-                    token_type: String::from(COLON),
-                    value: String::from(current_char),
-                });
-            }
-
-            if current_char == ',' {
-                self.index += 1;
-                return Some(Token {
-                    token_type: String::from(COMMA),
-                    value: String::from(current_char),
-                });
+            for token in [
+                tokens::L_CURLY,
+                tokens::R_CURLY,
+                tokens::L_BRACKET,
+                tokens::R_BRACKET,
+                tokens::COLON,
+                tokens::COMMA,
+            ] {
+                if String::from(current_char) == token {
+                    self.index += 1;
+                    return Some(Token {
+                        token_type: String::from(current_char),
+                        value: String::from(current_char),
+                    });
+                }
             }
         }
 
@@ -132,25 +114,26 @@ impl Parser {
             );
         }
     }
+
     fn unit(&mut self) -> Option<NodeType> {
-        if self.current_token.token_type == NUMBER {
+        if self.current_token.token_type == tokens::NUMBER {
             let value = self.current_token.value.parse::<u32>().unwrap();
-            self.eat(NUMBER);
+            self.eat(tokens::NUMBER);
             return Some(NodeType::Number(value));
         }
-        if self.current_token.token_type == STRING {
+        if self.current_token.token_type == tokens::STRING {
             let value = self.current_token.value.to_string();
-            self.eat(STRING);
+            self.eat(tokens::STRING);
             return Some(NodeType::String(value));
         }
         return None;
     }
 
     fn member(&mut self) -> Option<NodeType> {
-        if self.current_token.token_type == STRING {
+        if self.current_token.token_type == tokens::STRING {
             let key = self.current_token.value.clone();
-            self.eat(STRING);
-            self.eat(COLON);
+            self.eat(tokens::STRING);
+            self.eat(tokens::COLON);
             let value = self.json();
             return Some(NodeType::Member(Member {
                 key: key,
@@ -160,15 +143,41 @@ impl Parser {
         return None;
     }
 
-    fn object(&mut self) -> Option<NodeType> {
-        if self.current_token.token_type == L_BRACKET {
-            self.eat(L_BRACKET);
-            let obj = self.member();
-            self.eat(R_BRACKET);
-            match obj {
-                Some(obj) => return Some(NodeType::Object(Object { members: vec![obj] })),
-                None => return None,
+    fn array(&mut self) -> Option<Vec<NodeType>> {
+        if self.current_token.token_type == tokens::L_BRACKET {
+            let mut arr = vec![];
+            self.eat(tokens::L_BRACKET);
+            loop {
+                let json = self.json();
+                arr.push(json);
+                if self.current_token.token_type == tokens::R_BRACKET {
+                    break;
+                }
+                self.eat(tokens::COMMA);
             }
+            self.eat(tokens::R_BRACKET);
+            return Some(arr);
+        }
+        return None;
+    }
+
+    fn object(&mut self) -> Option<NodeType> {
+        if self.current_token.token_type == tokens::L_CURLY {
+            let mut arr = vec![];
+            self.eat(tokens::L_CURLY);
+
+            loop {
+                match self.member() {
+                    Some(member) => arr.push(member),
+                    None => (),
+                }
+                if self.current_token.token_type == tokens::R_CURLY {
+                    break;
+                }
+                self.eat(tokens::COMMA);
+            }
+            self.eat(tokens::R_CURLY);
+            return Some(NodeType::Object(Object { members: arr }));
         }
         return None;
     }
@@ -176,17 +185,26 @@ impl Parser {
     fn json(&mut self) -> NodeType {
         match self.unit() {
             Some(unit) => {
-                println!("is unit {:?}", unit);
                 return NodeType::Json(Json {
                     value: Box::new(unit),
                 });
             }
             None => (),
         }
+
         match self.object() {
             Some(object) => {
                 return NodeType::Json(Json {
                     value: Box::new(object),
+                })
+            }
+            None => (),
+        }
+
+        match self.array() {
+            Some(array) => {
+                return NodeType::Json(Json {
+                    value: Box::new(NodeType::Array(array)),
                 })
             }
             None => (),
@@ -203,12 +221,13 @@ impl Parser {
     }
 }
 
-fn print_json(json: &NodeType, depth: i8) -> String {
+fn print_json(json: &NodeType, depth: usize) -> String {
     match &*json {
         NodeType::Json(json) => return print_json(&json.value, depth + 1),
         NodeType::Member(value) => {
             return format!(
-                "\tkey: \"{}\", value: {}",
+                "{}\"{}\": {}",
+                "  ".repeat(depth),
                 value.key,
                 print_json(&value.value, depth + 1)
             );
@@ -216,10 +235,18 @@ fn print_json(json: &NodeType, depth: i8) -> String {
         NodeType::Object(object) => {
             let mut a = String::from("{\n");
             for mem in &object.members {
-                let mem_str = print_json(&mem, 1);
-                a = a + &mem_str;
+                let mem_str = print_json(&mem, depth);
+                a = a + &mem_str + ",\n";
             }
-            a = a + &String::from("\n}\n");
+            a = a + &String::from(format!("{}}}\n", "  ".repeat(depth - 1)));
+            return a;
+        }
+        NodeType::Array(array) => {
+            let mut a = String::from("[");
+            for item in array {
+                a = a + &print_json(&item, depth) + ",";
+            }
+            a = a + &String::from("]");
             return a;
         }
         NodeType::String(string) => {
@@ -233,8 +260,13 @@ fn print_json(json: &NodeType, depth: i8) -> String {
 }
 
 fn main() {
-    let contents =
-        fs::read_to_string("./input.json").expect("Something went wrong reading the file");
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 2 {
+        eprintln!("Missing filename.\nUsage: cargo run file.json");
+        return;
+    }
+
+    let contents = fs::read_to_string(&args[1]).expect("Something went wrong reading the file");
 
     let mut parser = Parser {
         code: contents,

@@ -3,5 +3,5 @@
 version = 3
 
 [[package]]
-name = "jparse"
-version = "0.1.0"
+name = "rusty-json-parser"
+version = "0.0.1"
