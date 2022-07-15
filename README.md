@@ -6,7 +6,7 @@ If you want a real library use https://github.com/serde-rs/json.
 
 ## Usage
 
-To parse a file: `cargo run file.json`
+To parse a file: `cargo run file.json`  
 To build `cargo build .`
 
 ## Grammar
@@ -20,8 +20,8 @@ To build `cargo build .`
 
 ## Todo
 
-[ ] Add tests
-[ ] Improve output
-[ ] Add error handling
-[ ] Understand what `Box` does instead of randomly using it to fix errors
-[ ] Make it useful?
+- [ ] Add tests
+- [ ] Improve output
+- [ ] Add error handling
+- [ ] Understand what `Box` does instead of randomly using it to fix errors
+- [ ] Make it useful?
